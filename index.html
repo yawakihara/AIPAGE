@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASTRA RAIDERS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero-panel">
+      <div class="hero-copy">
+        <p class="eyebrow">AI Generated Arcade Experience</p>
+        <h1>ASTRA RAIDERS</h1>
+        <p class="lead">
+          横スクロールで敵艦隊を突破し、最後に自動生成されたラスボス戦艦を撃破する
+          1ページ完結型のブラウザシューティングです。
+        </p>
+      </div>
+      <div class="control-bar">
+        <button id="startButton" class="primary-button">Start Mission</button>
+        <button id="pauseButton" class="ghost-button">Pause</button>
+        <button id="restartButton" class="ghost-button">Restart</button>
+      </div>
+    </header>
+
+    <main class="game-layout">
+      <section class="game-card">
+        <div class="hud-grid">
+          <div class="hud-box">
+            <span class="hud-label">Score</span>
+            <strong id="scoreValue">0</strong>
+          </div>
+          <div class="hud-box">
+            <span class="hud-label">Lives</span>
+            <strong id="livesValue">3</strong>
+          </div>
+          <div class="hud-box">
+            <span class="hud-label">Weapon</span>
+            <strong id="weaponValue">Pulse</strong>
+          </div>
+          <div class="hud-box">
+            <span class="hud-label">Shield</span>
+            <strong id="shieldValue">0</strong>
+          </div>
+          <div class="hud-box">
+            <span class="hud-label">Stage</span>
+            <strong id="stageNumberValue">1 / 100</strong>
+          </div>
+          <div class="hud-box">
+            <span class="hud-label">Threat</span>
+            <strong id="threatValue">Boss Preview</strong>
+          </div>
+          <div class="hud-progress">
+            <div class="hud-progress-head">
+              <span>Mission Progress</span>
+              <span id="stageValue">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="stageBar" class="progress-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="gameCanvas" width="1280" height="720" aria-label="横スクロールシューティングゲーム"></canvas>
+          <div class="canvas-overlay">
+            <p id="statusLine">Start Mission を押すか、Space キーで出撃してください。</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="info-card">
+        <section>
+          <p class="panel-title">Controls</p>
+          <ul class="info-list">
+            <li><strong>移動:</strong> <code>WASD</code> または方向キー</li>
+            <li><strong>攻撃:</strong> <code>Space</code> / <code>Enter</code> / 画面タッチ長押し</li>
+            <li><strong>一時停止:</strong> <code>P</code></li>
+            <li><strong>モバイル:</strong> 画面上をドラッグで移動</li>
+          </ul>
+        </section>
+
+        <section>
+          <p class="panel-title">Power Ups</p>
+          <ul class="info-list compact">
+            <li><span class="chip speed">1</span> スピードアップ</li>
+            <li><span class="chip wingman">2</span> 子機の追加</li>
+            <li><span class="chip laser">3</span> レーザ</li>
+            <li><span class="chip shield">4</span> シールド</li>
+          </ul>
+        </section>
+
+        <section>
+          <p class="panel-title">Audio</p>
+          <div class="audio-controls">
+            <button id="musicToggle" class="audio-button is-on" type="button">Music On</button>
+            <button id="sfxToggle" class="audio-button is-on" type="button">SFX On</button>
+          </div>
+          <p class="info-note">
+            BGM と効果音は、このプロジェクト用に自動生成したシンセ音源を使用しています。
+          </p>
+        </section>
+
+        <section>
+          <p class="panel-title">Mission Notes</p>
+          <p class="info-note">
+            プレイヤー機、敵機、ラスボスは AI 生成画像をゲームへ組み込んでいます。
+            全 100 面構成で、各ステージの進行が 100% に到達すると、その面専用のラスボスが出現します。
+          </p>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
