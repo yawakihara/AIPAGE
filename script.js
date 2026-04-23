@@ -287,11 +287,18 @@ function getBossProfile(stageNumber) {
   const movementIndex = (stageNumber - 1) % 10;
   const attackIndex = Math.floor((stageNumber - 1) / 10) % 10;
   const hue = (stageNumber * 31) % 360;
+  const visualIndex = stageNumber - 1;
   return {
     name: `${BOSS_PREFIXES[movementIndex]} ${BOSS_SUFFIXES[attackIndex]}`,
     movementIndex,
     attackIndex,
     hue,
+    visualIndex,
+    hullIndex: visualIndex % 10,
+    wingIndex: Math.floor(visualIndex / 10) % 10,
+    coreIndex: (visualIndex * 3 + attackIndex) % 10,
+    podIndex: (visualIndex * 7 + movementIndex) % 10,
+    armorIndex: (visualIndex * 11 + stageNumber) % 10,
     threatLabel: `${MOVEMENT_NAMES[movementIndex]} / ${ATTACK_NAMES[attackIndex]}`
   };
 }
@@ -707,6 +714,12 @@ function createBoss(stageNumber) {
     threatLabel: profile.threatLabel,
     movementIndex: profile.movementIndex,
     attackIndex: profile.attackIndex,
+    visualIndex: profile.visualIndex,
+    hullIndex: profile.hullIndex,
+    wingIndex: profile.wingIndex,
+    coreIndex: profile.coreIndex,
+    podIndex: profile.podIndex,
+    armorIndex: profile.armorIndex,
     hue: profile.hue,
     accent: `hsl(${profile.hue} 92% 65%)`,
     accentGlow: `hsla(${profile.hue} 92% 65% / 0.32)`,
@@ -1648,28 +1661,69 @@ function drawEnemies() {
 }
 
 function drawBossDecorations(boss) {
-  const crownCount = 3 + (boss.movementIndex % 4);
-  const podCount = 2 + (boss.attackIndex % 4);
+  const crownCount = 2 + (boss.wingIndex % 5);
+  const podCount = 2 + (boss.podIndex % 5);
+  const ribCount = 3 + (boss.armorIndex % 6);
+  const coreCount = 1 + (boss.coreIndex % 4);
+  const wingSpread = 0.22 + boss.wingIndex * 0.025;
+  const hullOffset = (boss.hullIndex - 4.5) * 4;
 
   ctx.save();
   ctx.translate(boss.x, boss.y);
 
   for (let index = 0; index < crownCount; index += 1) {
-    const angle = -0.9 + (1.8 * index) / Math.max(1, crownCount - 1);
-    const length = boss.width * (0.24 + (index % 2) * 0.04);
+    const angle = -0.95 + (1.9 * index) / Math.max(1, crownCount - 1);
+    const length = boss.width * (wingSpread + (index % 2) * 0.045);
+    const baseX = -boss.width * (0.1 + (boss.hullIndex % 3) * 0.035);
+    const baseY = hullOffset + Math.sin(index + boss.visualIndex) * 8;
     ctx.strokeStyle = boss.accent;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 + (boss.wingIndex % 3);
     ctx.beginPath();
-    ctx.moveTo(-boss.width * 0.08, 0);
-    ctx.lineTo(Math.cos(angle) * length - boss.width * 0.14, Math.sin(angle) * length * 0.55);
+    ctx.moveTo(baseX, baseY);
+    ctx.lineTo(
+      Math.cos(angle) * length - boss.width * (0.16 + boss.hullIndex * 0.006),
+      Math.sin(angle) * length * (0.48 + boss.wingIndex * 0.012)
+    );
+    ctx.stroke();
+  }
+
+  for (let index = 0; index < ribCount; index += 1) {
+    const ratio = (index + 1) / (ribCount + 1);
+    const x = -boss.width * 0.38 + boss.width * 0.55 * ratio;
+    const y = Math.sin(index * 1.7 + boss.visualIndex) * boss.height * 0.18;
+    const ribHeight = boss.height * (0.18 + ((index + boss.hullIndex) % 3) * 0.06);
+    ctx.strokeStyle = `hsla(${(boss.hue + 38) % 360} 90% 70% / 0.56)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - ribHeight);
+    ctx.lineTo(x + boss.width * 0.08, y + ribHeight);
     ctx.stroke();
   }
 
   for (let index = 0; index < podCount; index += 1) {
     const offsetY = ((index + 1) / (podCount + 1) - 0.5) * boss.height * 0.9;
+    const offsetX = -boss.width * (0.2 + ((index + boss.podIndex) % 3) * 0.06);
+    const podRadius = 9 + ((index + boss.podIndex) % 4) * 3;
     ctx.fillStyle = boss.accentGlow;
     ctx.beginPath();
-    ctx.arc(-boss.width * 0.2, offsetY, 11 + (index % 2) * 5, 0, Math.PI * 2);
+    ctx.arc(offsetX, offsetY, podRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = boss.accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  for (let index = 0; index < coreCount; index += 1) {
+    const angle = (Math.PI * 2 * index) / coreCount + boss.coreIndex * 0.21;
+    const radiusX = boss.width * (0.08 + (boss.coreIndex % 3) * 0.025);
+    const radiusY = boss.height * (0.08 + (boss.hullIndex % 3) * 0.03);
+    const coreX = -boss.width * 0.12 + Math.cos(angle) * radiusX;
+    const coreY = Math.sin(angle) * radiusY;
+    ctx.fillStyle = `hsla(${(boss.hue + 55) % 360} 100% 66% / 0.78)`;
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = boss.accent;
+    ctx.beginPath();
+    ctx.arc(coreX, coreY, 13 + (boss.coreIndex % 5), 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -1682,13 +1736,24 @@ function drawBoss() {
   }
 
   const boss = state.boss;
-  drawSprite(state.images.boss, boss.x, boss.y, boss.width, boss.height, {
-    glow: { blur: 34, color: boss.accentGlow },
-    fallbackColor: "#ff8868"
-  });
+  const stretchX = 1 + (boss.hullIndex - 4.5) * 0.018;
+  const stretchY = 1 + (boss.wingIndex - 4.5) * 0.012;
+  const tilt = Math.sin(boss.age * 0.012 + boss.visualIndex) * (0.012 + boss.movementIndex * 0.001);
 
   ctx.save();
   ctx.translate(boss.x, boss.y);
+  ctx.rotate(tilt);
+  ctx.scale(stretchX, stretchY);
+  drawSprite(state.images.boss, 0, 0, boss.width, boss.height, {
+    glow: { blur: 34, color: boss.accentGlow },
+    fallbackColor: "#ff8868"
+  });
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(boss.x, boss.y);
+  ctx.rotate(tilt);
+  ctx.scale(stretchX, stretchY);
   ctx.globalCompositeOperation = "source-atop";
   const tint = ctx.createLinearGradient(-boss.width / 2, 0, boss.width / 2, 0);
   tint.addColorStop(0, `hsla(${boss.hue} 90% 58% / 0.12)`);
@@ -1698,6 +1763,30 @@ function drawBoss() {
   ctx.restore();
 
   drawBossDecorations(boss);
+
+  if (boss.hullIndex % 3 === 0) {
+    drawSprite(state.images.boss, boss.x + boss.width * 0.1, boss.y - boss.height * 0.24, boss.width * 0.38, boss.height * 0.22, {
+      glow: { blur: 18, color: boss.accentGlow },
+      alpha: 0.68,
+      fallbackColor: "#ff8868"
+    });
+  }
+
+  if (boss.hullIndex % 3 === 1) {
+    drawSprite(state.images.boss, boss.x - boss.width * 0.04, boss.y + boss.height * 0.28, boss.width * 0.42, boss.height * 0.24, {
+      glow: { blur: 18, color: boss.accentGlow },
+      alpha: 0.62,
+      fallbackColor: "#ff8868"
+    });
+  }
+
+  if (boss.hullIndex % 3 === 2) {
+    drawSprite(state.images.boss, boss.x - boss.width * 0.26, boss.y, boss.width * 0.24, boss.height * 0.68, {
+      glow: { blur: 18, color: boss.accentGlow },
+      alpha: 0.58,
+      fallbackColor: "#ff8868"
+    });
+  }
 
   ctx.save();
   ctx.fillStyle = "rgba(4, 10, 16, 0.82)";
