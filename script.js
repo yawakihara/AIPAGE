@@ -17,7 +17,15 @@ const ui = {
   pauseButton: document.getElementById("pauseButton"),
   restartButton: document.getElementById("restartButton"),
   musicToggle: document.getElementById("musicToggle"),
-  sfxToggle: document.getElementById("sfxToggle")
+  sfxToggle: document.getElementById("sfxToggle"),
+  rankingStatus: document.getElementById("rankingStatus"),
+  leaderboardList: document.getElementById("leaderboardList"),
+  refreshRankingButton: document.getElementById("refreshRankingButton"),
+  scoreForm: document.getElementById("scoreForm"),
+  playerNameInput: document.getElementById("playerNameInput"),
+  playerPinInput: document.getElementById("playerPinInput"),
+  submitScoreValue: document.getElementById("submitScoreValue"),
+  submitScoreButton: document.getElementById("submitScoreButton")
 };
 
 const ASSET_PATHS = {
@@ -37,6 +45,11 @@ const AUDIO_PATHS = {
   beam: "assets/audio/sfx-beam.wav",
   victory: "assets/audio/sfx-victory.wav",
   failure: "assets/audio/sfx-failure.wav"
+};
+
+const rankingConfig = {
+  url: String(window.ASTRA_CONFIG?.supabaseUrl ?? "").replace(/\/+$/, ""),
+  anonKey: String(window.ASTRA_CONFIG?.supabaseAnonKey ?? "")
 };
 
 const BOSS_PREFIXES = [
@@ -128,7 +141,9 @@ const state = {
   pendingBossSpawn: false,
   previewBossName: "Boss Preview",
   previewThreatLabel: "Threat Scan",
-  finalVictory: false
+  finalVictory: false,
+  scoreSubmissionReady: false,
+  submittedRunScore: 0
 };
 
 const audioState = {
@@ -243,6 +258,192 @@ function playSfx(name, options = {}) {
   }
 }
 
+function isRankingConfigured() {
+  return rankingConfig.url.startsWith("https://") && rankingConfig.anonKey.length > 20;
+}
+
+function getRankingHeaders() {
+  return {
+    apikey: rankingConfig.anonKey,
+    Authorization: `Bearer ${rankingConfig.anonKey}`,
+    "Content-Type": "application/json"
+  };
+}
+
+function setRankingStatus(message, type = "") {
+  ui.rankingStatus.textContent = message;
+  ui.rankingStatus.classList.toggle("is-error", type === "error");
+  ui.rankingStatus.classList.toggle("is-success", type === "success");
+}
+
+function renderLeaderboard(rows) {
+  ui.leaderboardList.replaceChildren();
+
+  if (!rows.length) {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "ranking-empty";
+    emptyItem.textContent = "まだスコアがありません";
+    ui.leaderboardList.append(emptyItem);
+    return;
+  }
+
+  rows.forEach((row) => {
+    const item = document.createElement("li");
+    const name = document.createElement("span");
+    const score = document.createElement("strong");
+
+    name.className = "ranking-name";
+    name.textContent = row.display_name;
+    score.className = "ranking-score";
+    score.textContent = Number(row.score).toLocaleString("ja-JP");
+
+    item.append(name, score);
+    ui.leaderboardList.append(item);
+  });
+}
+
+async function loadLeaderboard() {
+  if (!isRankingConfigured()) {
+    setRankingStatus("config.js にSupabase接続情報を設定してください。", "error");
+    ui.refreshRankingButton.disabled = true;
+    return;
+  }
+
+  ui.refreshRankingButton.disabled = true;
+  setRankingStatus("ランキングを読み込み中...");
+
+  try {
+    const response = await fetch(`${rankingConfig.url}/rest/v1/rpc/get_leaderboard`, {
+      method: "POST",
+      headers: getRankingHeaders(),
+      body: JSON.stringify({ p_limit: 20 })
+    });
+
+    if (!response.ok) {
+      throw new Error("RANKING_LOAD_FAILED");
+    }
+
+    const rows = await response.json();
+    renderLeaderboard(Array.isArray(rows) ? rows : []);
+    setRankingStatus("上位20件を表示しています。");
+  } catch {
+    setRankingStatus("ランキングを読み込めませんでした。接続設定を確認してください。", "error");
+  } finally {
+    ui.refreshRankingButton.disabled = false;
+  }
+}
+
+function resetScoreSubmission() {
+  state.scoreSubmissionReady = false;
+  state.submittedRunScore = 0;
+  ui.submitScoreValue.textContent = "0";
+  ui.submitScoreButton.disabled = true;
+  ui.playerPinInput.value = "";
+}
+
+function prepareScoreSubmission() {
+  state.submittedRunScore = Math.max(0, Math.floor(state.score));
+  state.scoreSubmissionReady = state.submittedRunScore > 0;
+  ui.submitScoreValue.textContent = state.submittedRunScore.toLocaleString("ja-JP");
+  ui.submitScoreButton.disabled = !state.scoreSubmissionReady || !isRankingConfigured();
+
+  if (!isRankingConfigured()) {
+    setRankingStatus("config.js にSupabase接続情報を設定してください。", "error");
+    return;
+  }
+
+  setRankingStatus(
+    state.scoreSubmissionReady
+      ? "名前と登録時の4桁PINを入力してください。"
+      : "登録できるスコアがありません。"
+  );
+}
+
+function getSubmitErrorMessage(errorCode) {
+  if (errorCode.includes("PIN_MISMATCH")) {
+    return "PINが一致しないため、この名前のスコアは更新できません。";
+  }
+  if (errorCode.includes("INVALID_PIN")) {
+    return "PINは半角数字4桁で入力してください。";
+  }
+  if (errorCode.includes("INVALID_NAME")) {
+    return "名前は1文字以上20文字以内で入力してください。";
+  }
+  if (errorCode.includes("INVALID_SCORE")) {
+    return "登録できないスコアです。";
+  }
+  return "スコア登録に失敗しました。接続設定を確認してください。";
+}
+
+async function submitScore(event) {
+  event.preventDefault();
+
+  if (!state.scoreSubmissionReady || !isRankingConfigured()) {
+    setRankingStatus("ゲーム終了後にスコアを登録できます。", "error");
+    return;
+  }
+
+  const name = ui.playerNameInput.value.trim();
+  const pin = ui.playerPinInput.value.trim();
+
+  if (!name || name.length > 20) {
+    setRankingStatus("名前は1文字以上20文字以内で入力してください。", "error");
+    return;
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    setRankingStatus("PINは半角数字4桁で入力してください。", "error");
+    return;
+  }
+
+  ui.submitScoreButton.disabled = true;
+  setRankingStatus("スコアを登録中...");
+
+  try {
+    const response = await fetch(`${rankingConfig.url}/rest/v1/rpc/submit_high_score`, {
+      method: "POST",
+      headers: getRankingHeaders(),
+      body: JSON.stringify({
+        p_name: name,
+        p_score: state.submittedRunScore,
+        p_pin: pin
+      })
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(String(result?.message ?? "SUBMIT_FAILED"));
+    }
+
+    try {
+      localStorage.setItem("astraPlayerName", name);
+    } catch {
+      // Local storage is optional; the PIN is never stored in the browser.
+    }
+
+    ui.playerPinInput.value = "";
+
+    let completionMessage;
+    let completionType = "";
+
+    if (result.status === "not_improved") {
+      completionMessage = `現在の最高得点 ${Number(result.score).toLocaleString("ja-JP")} を超えていないため更新しませんでした。`;
+    } else {
+      state.scoreSubmissionReady = false;
+      completionMessage = result.status === "created"
+        ? "名前と最高得点を登録しました。"
+        : "最高得点を更新しました。";
+      completionType = "success";
+    }
+
+    await loadLeaderboard();
+    setRankingStatus(completionMessage, completionType);
+  } catch (error) {
+    setRankingStatus(getSubmitErrorMessage(String(error?.message ?? error)), "error");
+  } finally {
+    ui.submitScoreButton.disabled = !state.scoreSubmissionReady || !isRankingConfigured();
+  }
+}
+
 function createStars() {
   state.stars = Array.from({ length: 100 }, () => ({
     x: Math.random() * canvas.width,
@@ -352,6 +553,7 @@ function resetGame() {
   state.cameraShake = 0;
   state.messageTimer = 0;
   state.finalVictory = false;
+  resetScoreSubmission();
   resetPlayer();
   createStars();
   beginStage(1, true);
@@ -797,6 +999,7 @@ function hitPlayer(damage = 50) {
     state.mode = "gameover";
     pauseBgm(true);
     playSfx("failure", { volume: 0.68, rate: 1 });
+    prepareScoreSubmission();
     setStatus("Mission Failed. Restart で Stage 1 から再挑戦できます。", 999999);
   } else {
     setStatus(`被弾。残機 ${state.player.lives}。`, 120);
@@ -835,6 +1038,7 @@ function destroyBoss() {
     state.mode = "victory";
     state.finalVictory = true;
     pauseBgm(true);
+    prepareScoreSubmission();
     setStatus("Stage 100 Boss Down. Campaign Complete.", 999999);
     return;
   }
@@ -2076,10 +2280,24 @@ ui.sfxToggle.addEventListener("click", () => {
   syncAudioButtons();
 });
 
+ui.refreshRankingButton.addEventListener("click", () => {
+  loadLeaderboard();
+});
+
+ui.scoreForm.addEventListener("submit", submitScore);
+
 async function boot() {
   await loadAssets();
   setupAudio();
   resetGame();
+
+  try {
+    ui.playerNameInput.value = localStorage.getItem("astraPlayerName") ?? "";
+  } catch {
+    ui.playerNameInput.value = "";
+  }
+
+  loadLeaderboard();
   render();
   loop();
 }
