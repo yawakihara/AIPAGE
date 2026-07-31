@@ -278,6 +278,149 @@ canvas {
   opacity: 0.7;
 }
 
+.leaderboard-section {
+  padding: 18px;
+  border: 1px solid rgba(127, 225, 255, 0.12);
+  border-radius: 20px;
+  background: rgba(1, 9, 19, 0.42);
+}
+
+.leaderboard-heading,
+.score-ready {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.leaderboard-heading .panel-title {
+  margin: 0;
+}
+
+.ranking-refresh {
+  padding: 6px 12px;
+  color: var(--cyan);
+  background: rgba(127, 225, 255, 0.08);
+  border: 1px solid rgba(127, 225, 255, 0.16);
+  font-size: 0.82rem;
+}
+
+.ranking-status {
+  margin: 12px 0;
+  color: rgba(232, 251, 255, 0.68);
+  font-size: 0.92rem;
+}
+
+.ranking-status.is-error {
+  color: #ffaaa2;
+}
+
+.ranking-status.is-success {
+  color: #7dfbd5;
+}
+
+.leaderboard-list {
+  margin: 0 0 18px;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  counter-reset: ranking;
+}
+
+.leaderboard-list li {
+  counter-increment: ranking;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.leaderboard-list li::before {
+  content: counter(ranking, decimal-leading-zero);
+  color: rgba(127, 225, 255, 0.68);
+  font-family: "Orbitron", sans-serif;
+  font-size: 0.72rem;
+}
+
+.leaderboard-list .ranking-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.leaderboard-list .ranking-score {
+  color: #ffd28b;
+  font-family: "Orbitron", sans-serif;
+  font-size: 0.82rem;
+}
+
+.leaderboard-list .ranking-empty {
+  display: block;
+  color: rgba(232, 251, 255, 0.58);
+  text-align: center;
+}
+
+.leaderboard-list .ranking-empty::before {
+  content: none;
+}
+
+.score-form {
+  display: grid;
+  gap: 11px;
+}
+
+.score-ready {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(93, 199, 255, 0.12), rgba(57, 243, 221, 0.08));
+  color: rgba(232, 251, 255, 0.75);
+}
+
+.score-ready strong {
+  color: #ffd28b;
+  font-family: "Orbitron", sans-serif;
+}
+
+.score-form label {
+  display: grid;
+  gap: 5px;
+  color: rgba(232, 251, 255, 0.72);
+  font-size: 0.9rem;
+}
+
+.score-form input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(127, 225, 255, 0.16);
+  border-radius: 12px;
+  outline: none;
+  color: var(--ice);
+  background: rgba(255, 255, 255, 0.055);
+  font: inherit;
+}
+
+.score-form input:focus {
+  border-color: rgba(127, 225, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(127, 225, 255, 0.09);
+}
+
+.ranking-submit {
+  width: 100%;
+}
+
+.ranking-submit:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.75);
+  opacity: 0.55;
+  transform: none;
+}
+
 .info-note {
   margin: 0;
   font-size: 1.05rem;
