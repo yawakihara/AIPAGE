@@ -105,6 +105,33 @@
           </p>
         </section>
 
+        <section class="leaderboard-section">
+          <div class="leaderboard-heading">
+            <p class="panel-title">High Scores</p>
+            <button id="refreshRankingButton" class="ranking-refresh" type="button">更新</button>
+          </div>
+          <p id="rankingStatus" class="ranking-status">ランキング接続を確認中...</p>
+          <ol id="leaderboardList" class="leaderboard-list">
+            <li class="ranking-empty">まだスコアがありません</li>
+          </ol>
+
+          <form id="scoreForm" class="score-form">
+            <div class="score-ready">
+              <span>登録スコア</span>
+              <strong id="submitScoreValue">0</strong>
+            </div>
+            <label>
+              <span>名前</span>
+              <input id="playerNameInput" type="text" maxlength="20" autocomplete="username" placeholder="awakihara" required>
+            </label>
+            <label>
+              <span>4桁PIN</span>
+              <input id="playerPinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" placeholder="0000" required>
+            </label>
+            <button id="submitScoreButton" class="primary-button ranking-submit" type="submit" disabled>スコアを登録</button>
+          </form>
+        </section>
+
         <section>
           <p class="panel-title">Mission Notes</p>
           <p class="info-note">
@@ -116,6 +143,7 @@
     </main>
   </div>
 
+  <script src="config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
