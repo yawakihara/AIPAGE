@@ -47,3 +47,31 @@ python tools\generate_audio.py
 4. Vercel
 
 必要ファイルは `index.html` `style.css` `script.js` `assets/` のみです。
+
+## オンラインランキング設定
+
+GitHub Pages は静的サイトのため、ランキング保存には Supabase を使用します。
+
+1. Supabase で新しいプロジェクトを作成します。
+2. Supabase の `SQL Editor` を開きます。
+3. `supabase-schema.sql` の内容を貼り付けて実行します。
+4. Supabase の `Project Settings` から Project URL と anon public key を確認します。
+5. `config.js` を次のように設定します。
+
+```javascript
+window.ASTRA_CONFIG = {
+  supabaseUrl: "https://YOUR_PROJECT.supabase.co",
+  supabaseAnonKey: "YOUR_ANON_PUBLIC_KEY"
+};
+```
+
+`service_role` キーは絶対に `config.js` へ入れないでください。ブラウザへ置いてよいのは anon public key だけです。
+
+ランキング仕様:
+
+- 名前は前後の空白を除去し、小文字化した値を識別キーとして扱います。
+- `awakihara`、`AWAKIHARA`、`Awakihara` は同一人物として1件だけ保存されます。
+- 初回登録時の表示名と4桁PINを保持します。
+- PINは bcrypt ハッシュとしてデータベースへ保存されます。
+- 既存名はPINが一致し、以前の最高得点を超えた場合だけ更新されます。
+- PINハッシュはランキング取得APIから返されません。
