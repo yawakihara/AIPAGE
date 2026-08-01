@@ -263,11 +263,17 @@ function isRankingConfigured() {
 }
 
 function getRankingHeaders() {
-  return {
+  const headers = {
     apikey: rankingConfig.anonKey,
-    Authorization: `Bearer ${rankingConfig.anonKey}`,
     "Content-Type": "application/json"
   };
+
+  // Legacy anon keys are JWTs; new sb_publishable keys must use apikey only.
+  if (rankingConfig.anonKey.startsWith("eyJ")) {
+    headers.Authorization = `Bearer ${rankingConfig.anonKey}`;
+  }
+
+  return headers;
 }
 
 function setRankingStatus(message, type = "") {
