@@ -958,7 +958,7 @@ function spawnEnemy() {
 function createBoss(stageNumber) {
   const difficulty = getStageDifficulty(stageNumber);
   const profile = getBossProfile(stageNumber);
-  const hp = Math.round(2000 + stageNumber * 190 + stageNumber * stageNumber * 6.2);
+  const hp = Math.round(650 + stageNumber * 75 + stageNumber * stageNumber * 7.5);
   const baseX = 910 - Math.min(120, stageNumber * 1.6);
   const width = clamp(350 + stageNumber * 1.8, 350, 600);
   const height = clamp(180 + stageNumber * 0.85, 180, 320);
@@ -990,9 +990,9 @@ function createBoss(stageNumber) {
     intro: true,
     age: 0,
     phase: Math.random() * Math.PI * 2,
-    fireCooldown: Math.max(14, 52 - Math.floor(stageNumber * 0.16)),
-    patternCooldown: Math.max(44, 116 - Math.floor(stageNumber * 0.32)),
-    specialCooldown: Math.max(80, 230 - stageNumber),
+    fireCooldown: Math.max(14, 54 - Math.floor((stageNumber - 1) * 0.4)),
+    patternCooldown: Math.max(44, 120 - Math.floor((stageNumber - 1) * 0.7)),
+    specialCooldown: Math.max(80, 240 - Math.floor((stageNumber - 1) * 1.4)),
     barrageCooldown: Math.max(48, 120 - stageNumber * 0.4),
     barrageVolley: 0,
     laserCooldown: Math.max(48, 132 - stageNumber * 0.55),
@@ -1430,18 +1430,18 @@ function updateBossMovement(boss) {
 
   boss.targetX = clamp(boss.targetX, leftLimit, rightLimit);
   boss.targetY = clamp(boss.targetY, 110, canvas.height - 110);
-  const movementSpeed = Math.min(0.16, 0.08 + boss.stage * 0.0008);
+  const movementSpeed = Math.min(0.16, 0.08 + (boss.stage - 1) * 0.0008);
   boss.x = lerp(boss.x, boss.targetX, boss.movementIndex === 6 && boss.dashMode === "crush" ? 0.2 : movementSpeed);
   boss.y = lerp(boss.y, boss.targetY, movementSpeed);
 }
 
 function updateBossEscalationBarrage(boss) {
-  if (boss.barrageCooldown > 0) {
+  if (boss.stage < 6 || boss.barrageCooldown > 0) {
     return;
   }
 
   const tier = Math.floor((boss.stage - 1) / 8);
-  const count = Math.min(18, 4 + tier);
+  const count = Math.min(16, 2 + tier);
   const speed = 4.8 + boss.stage * 0.035;
   const spread = Math.min(2.45, 0.9 + tier * 0.12);
   const origin = { x: boss.x - boss.width * 0.44, y: boss.y };
@@ -1525,7 +1525,8 @@ function updateBossLaserMatrix(boss) {
 function updateBossAttackStyle(boss) {
   const stageScale = boss.stage;
   const hpPressure = 1 - boss.hp / boss.maxHp;
-  const attackTempo = 1 + boss.stage * 0.006 + hpPressure * 0.7;
+  const enrageScale = Math.min(0.7, Math.max(0, boss.stage - 1) * 0.007);
+  const attackTempo = 1 + Math.max(0, boss.stage - 1) * 0.006 + hpPressure * enrageScale;
   boss.fireCooldown -= attackTempo;
   boss.patternCooldown -= attackTempo;
   boss.specialCooldown -= attackTempo;
@@ -2144,18 +2145,6 @@ function drawBoss() {
     glow: { blur: 34, color: boss.accentGlow },
     fallbackColor: "#ff8868"
   });
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(boss.x, boss.y);
-  ctx.rotate(tilt);
-  ctx.scale(stretchX, stretchY);
-  ctx.globalCompositeOperation = "source-atop";
-  const tint = ctx.createLinearGradient(-boss.width / 2, 0, boss.width / 2, 0);
-  tint.addColorStop(0, `hsla(${boss.hue} 90% 58% / 0.12)`);
-  tint.addColorStop(1, `hsla(${(boss.hue + 80) % 360} 90% 66% / 0.24)`);
-  ctx.fillStyle = tint;
-  ctx.fillRect(-boss.width / 2, -boss.height / 2, boss.width, boss.height);
   ctx.restore();
 
   drawBossDecorations(boss);
