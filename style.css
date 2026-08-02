@@ -410,6 +410,13 @@ canvas {
   box-shadow: 0 0 0 3px rgba(127, 225, 255, 0.09);
 }
 
+.ranking-auto-note {
+  margin: 0;
+  color: rgba(183, 240, 255, 0.7);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .ranking-submit {
   width: 100%;
 }
