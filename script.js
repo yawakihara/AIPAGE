@@ -2,6 +2,7 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 const TOTAL_STAGES = 100;
+const BASE_ENEMY_BULLET_LIMIT = 160;
 
 const ui = {
   score: document.getElementById("scoreValue"),
@@ -134,6 +135,8 @@ const state = {
   stageNumber: 1,
   stageScore: 0,
   stageTarget: 0,
+  stageWaveTimer: 0,
+  stageMinFrames: 0,
   stageTransition: 0,
   stageIntroTimer: 0,
   nextStage: 2,
@@ -483,11 +486,35 @@ function setStatus(message, hold = 240) {
 }
 
 function getStageDifficulty(stageNumber) {
-  return 1 + (stageNumber - 1) * 0.075;
+  return 1 + (stageNumber - 1) * 0.09;
 }
 
 function getStageTarget(stageNumber) {
-  return 500 + stageNumber * 42;
+  return Math.round(1800 + stageNumber * 70 + Math.pow(stageNumber, 1.28) * 8);
+}
+
+function getStageMinFrames(stageNumber) {
+  const minimumSeconds = 30 + Math.min(30, (stageNumber - 1) * 0.3);
+  return Math.round(minimumSeconds * 60);
+}
+
+function getEnemyCap(stageNumber) {
+  return Math.min(26, 6 + Math.floor(stageNumber / 5));
+}
+
+function getEnemyWaveSize(stageNumber) {
+  const stageOffset = Math.max(0, stageNumber - 1);
+  const guaranteed = 1 + Math.floor(stageOffset / 28);
+  const extraChance = (stageOffset % 28) / 28;
+  return Math.min(5, guaranteed + (Math.random() < extraChance ? 1 : 0));
+}
+
+function getEnemyBulletLimit(stageNumber) {
+  return BASE_ENEMY_BULLET_LIMIT + stageNumber * 3;
+}
+
+function isStageWaveComplete() {
+  return state.stageScore >= state.stageTarget && state.stageWaveTimer >= state.stageMinFrames;
 }
 
 function getBossProfile(stageNumber) {
@@ -506,7 +533,9 @@ function getBossProfile(stageNumber) {
     coreIndex: (visualIndex * 3 + attackIndex) % 10,
     podIndex: (visualIndex * 7 + movementIndex) % 10,
     armorIndex: (visualIndex * 11 + stageNumber) % 10,
-    threatLabel: `${MOVEMENT_NAMES[movementIndex]} / ${ATTACK_NAMES[attackIndex]}`
+    threatLabel: stageNumber >= 20
+      ? `${MOVEMENT_NAMES[movementIndex]} / ${ATTACK_NAMES[attackIndex]} + Laser Matrix Lv.${1 + Math.floor((stageNumber - 20) / 10)}`
+      : `${MOVEMENT_NAMES[movementIndex]} / ${ATTACK_NAMES[attackIndex]}`
   };
 }
 
@@ -529,6 +558,8 @@ function beginStage(stageNumber, initial = false) {
   state.stageNumber = stageNumber;
   state.stageScore = 0;
   state.stageTarget = getStageTarget(stageNumber);
+  state.stageWaveTimer = 0;
+  state.stageMinFrames = getStageMinFrames(stageNumber);
   state.enemySpawnTimer = 30;
   state.stageTransition = 0;
   state.stageIntroTimer = initial ? 120 : 135;
@@ -571,9 +602,9 @@ function getPlayerSpeed() {
 }
 
 function syncHud() {
-  const stageProgress = state.boss
-    ? 100
-    : Math.min(100, (state.stageScore / state.stageTarget) * 100);
+  const scoreProgress = state.stageTarget > 0 ? state.stageScore / state.stageTarget : 0;
+  const timeProgress = state.stageMinFrames > 0 ? state.stageWaveTimer / state.stageMinFrames : 0;
+  const stageProgress = state.boss ? 100 : Math.min(100, Math.min(scoreProgress, timeProgress) * 100);
 
   ui.score.textContent = state.score.toLocaleString("ja-JP");
   ui.lives.textContent = String(state.player.lives);
@@ -607,6 +638,10 @@ function togglePause() {
 }
 
 function spawnEnemyProjectile(config) {
+  if (state.enemyBullets.length >= getEnemyBulletLimit(state.stageNumber)) {
+    return;
+  }
+
   state.enemyBullets.push({
     x: config.x,
     y: config.y,
@@ -621,7 +656,11 @@ function spawnEnemyProjectile(config) {
     kind: config.kind ?? "orb",
     phase: config.phase ?? Math.random() * Math.PI * 2,
     pulse: config.pulse ?? 0,
-    trailHue: config.trailHue ?? null
+    trailHue: config.trailHue ?? null,
+    length: config.length ?? 0,
+    thickness: config.thickness ?? 0,
+    bounceY: config.bounceY ?? false,
+    bouncesRemaining: config.bouncesRemaining ?? 0
   });
 }
 
@@ -643,6 +682,13 @@ function fireEnemyAimed(origin, speed = 6, spread = 0, options = {}) {
     pulse: options.pulse,
     trailHue: options.trailHue
   });
+}
+
+function fireEnemyAimedBurst(origin, count, speed, spread = 28, options = {}) {
+  for (let index = 0; index < count; index += 1) {
+    const offset = (index - (count - 1) / 2) * spread;
+    fireEnemyAimed(origin, speed, offset, options);
+  }
 }
 
 function fireBossFan(origin, count, speed, spreadAngle, options = {}) {
@@ -826,6 +872,7 @@ function getEnemyTypesForStage(stageNumber) {
 function spawnEnemy() {
   const stageNumber = state.stageNumber;
   const difficulty = getStageDifficulty(stageNumber);
+  const speedMultiplier = 1 + (stageNumber - 1) * 0.003;
   const types = getEnemyTypesForStage(stageNumber);
   const type = types[Math.floor(Math.random() * types.length)];
   const y = 80 + Math.random() * (canvas.height - 160);
@@ -847,8 +894,8 @@ function spawnEnemy() {
       height: 52,
       hp: 28 + stageNumber * 4,
       maxHp: 28 + stageNumber * 4,
-      speed: 5.8 + difficulty * 0.55,
-      fireRate: Math.max(42, 110 - stageNumber),
+      speed: (5.8 + difficulty * 0.55) * speedMultiplier,
+      fireRate: Math.max(24, 110 - Math.floor(stageNumber * 0.85)),
       score: 70 + stageNumber * 4,
       progressValue: 58 + stageNumber * 2,
       touchDamage: 40
@@ -860,8 +907,8 @@ function spawnEnemy() {
       height: 62,
       hp: 46 + stageNumber * 6,
       maxHp: 46 + stageNumber * 6,
-      speed: 4.1 + difficulty * 0.42,
-      fireRate: Math.max(36, 90 - Math.floor(stageNumber * 0.7)),
+      speed: (4.1 + difficulty * 0.42) * speedMultiplier,
+      fireRate: Math.max(24, 92 - Math.floor(stageNumber * 0.65)),
       score: 110 + stageNumber * 6,
       progressValue: 80 + stageNumber * 2.4,
       touchDamage: 48
@@ -873,8 +920,8 @@ function spawnEnemy() {
       height: 88,
       hp: 96 + stageNumber * 12,
       maxHp: 96 + stageNumber * 12,
-      speed: 2.8 + difficulty * 0.24,
-      fireRate: Math.max(28, 58 - Math.floor(stageNumber * 0.2)),
+      speed: (2.8 + difficulty * 0.24) * speedMultiplier,
+      fireRate: Math.max(22, 62 - Math.floor(stageNumber * 0.32)),
       score: 180 + stageNumber * 9,
       progressValue: 120 + stageNumber * 3,
       touchDamage: 58
@@ -886,8 +933,8 @@ function spawnEnemy() {
       height: 46,
       hp: 36 + stageNumber * 5,
       maxHp: 36 + stageNumber * 5,
-      speed: 6.8 + difficulty * 0.7,
-      fireRate: Math.max(32, 74 - Math.floor(stageNumber * 0.55)),
+      speed: (6.8 + difficulty * 0.7) * speedMultiplier,
+      fireRate: Math.max(20, 76 - Math.floor(stageNumber * 0.55)),
       score: 125 + stageNumber * 7,
       progressValue: 72 + stageNumber * 2.2,
       touchDamage: 44
@@ -899,8 +946,8 @@ function spawnEnemy() {
       height: 98,
       hp: 120 + stageNumber * 14,
       maxHp: 120 + stageNumber * 14,
-      speed: 2.3 + difficulty * 0.18,
-      fireRate: Math.max(30, 64 - Math.floor(stageNumber * 0.2)),
+      speed: (2.3 + difficulty * 0.18) * speedMultiplier,
+      fireRate: Math.max(24, 70 - Math.floor(stageNumber * 0.35)),
       score: 210 + stageNumber * 11,
       progressValue: 132 + stageNumber * 3.4,
       touchDamage: 64
@@ -911,7 +958,7 @@ function spawnEnemy() {
 function createBoss(stageNumber) {
   const difficulty = getStageDifficulty(stageNumber);
   const profile = getBossProfile(stageNumber);
-  const hp = 1000 + stageNumber * 110 + stageNumber * stageNumber * 4;
+  const hp = Math.round(2000 + stageNumber * 190 + stageNumber * stageNumber * 6.2);
   const baseX = 910 - Math.min(120, stageNumber * 1.6);
   const width = clamp(350 + stageNumber * 1.8, 350, 600);
   const height = clamp(180 + stageNumber * 0.85, 180, 320);
@@ -943,9 +990,13 @@ function createBoss(stageNumber) {
     intro: true,
     age: 0,
     phase: Math.random() * Math.PI * 2,
-    fireCooldown: Math.max(18, 54 - Math.floor(stageNumber * 0.12)),
-    patternCooldown: Math.max(52, 120 - Math.floor(stageNumber * 0.25)),
-    specialCooldown: Math.max(90, 240 - stageNumber),
+    fireCooldown: Math.max(14, 52 - Math.floor(stageNumber * 0.16)),
+    patternCooldown: Math.max(44, 116 - Math.floor(stageNumber * 0.32)),
+    specialCooldown: Math.max(80, 230 - stageNumber),
+    barrageCooldown: Math.max(48, 120 - stageNumber * 0.4),
+    barrageVolley: 0,
+    laserCooldown: Math.max(48, 132 - stageNumber * 0.55),
+    laserVolley: 0,
     retargetTimer: 70,
     dashMode: "idle",
     dashClock: 0,
@@ -1027,7 +1078,7 @@ function destroyEnemy(enemy) {
     spawnPickup(enemy.x, enemy.y);
   }
 
-  if (state.stageScore >= state.stageTarget && !state.boss) {
+  if (isStageWaveComplete() && !state.boss) {
     state.pendingBossSpawn = true;
   }
 }
@@ -1135,7 +1186,7 @@ function updateBullets() {
 
     state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
 
-    if (state.boss && bullet.life > 0) {
+    if (state.boss && bullet.life > 0 && !bullet.bossHit) {
       const bossHitbox = {
         x: state.boss.x - 36,
         y: state.boss.y,
@@ -1143,6 +1194,7 @@ function updateBullets() {
         height: state.boss.height * 0.72
       };
       if (intersectsRect(bullet, bossHitbox)) {
+        bullet.bossHit = true;
         state.boss.hp -= bullet.damage;
         bullet.pierce -= 1;
         addEffect(bullet.x, bullet.y, "rgba(255, 147, 90, 0.36)", 12, 4);
@@ -1161,19 +1213,20 @@ function updateBullets() {
 }
 
 function updateEnemies() {
-  if (state.boss || state.stageTransition > 0 || state.stageState !== "wave") {
+  if (state.boss || state.stageTransition > 0 || state.stageState !== "wave" || state.stageIntroTimer > 0) {
     return;
   }
 
+  state.stageWaveTimer += 1;
   state.enemySpawnTimer -= 1;
   const stageNumber = state.stageNumber;
-  const baseRate = Math.max(12, 54 - Math.floor(stageNumber * 0.28));
+  const baseRate = Math.max(18, 52 - Math.floor(stageNumber * 0.32));
   if (state.enemySpawnTimer <= 0) {
-    spawnEnemy();
-    if (stageNumber > 18 && Math.random() < 0.18 + stageNumber * 0.002) {
+    const waveSize = getEnemyWaveSize(stageNumber);
+    for (let index = 0; index < waveSize && state.enemies.length < getEnemyCap(stageNumber); index += 1) {
       spawnEnemy();
     }
-    state.enemySpawnTimer = baseRate + Math.floor(Math.random() * 16);
+    state.enemySpawnTimer = baseRate + Math.floor(Math.random() * 12);
   }
 
   state.enemies.forEach((enemy) => {
@@ -1218,27 +1271,35 @@ function updateEnemies() {
 
     if (enemy.fireCooldown <= 0) {
       const muzzle = { x: enemy.x - enemy.width / 2, y: enemy.y };
-      const bulletSpeed = 4.8 + state.stageNumber * 0.03;
+      const bulletSpeed = 4.8 + state.stageNumber * 0.038;
+      const bulletTier = Math.floor((stageNumber - 1) / 12);
       if (enemy.type === "fighter") {
-        fireEnemyAimed(muzzle, bulletSpeed + 1.6);
+        const count = Math.min(5, 1 + Math.floor(bulletTier / 2));
+        fireEnemyAimedBurst(muzzle, count, bulletSpeed + 1.6, 24, {
+          radius: 5,
+          damage: 36 + stageNumber * 0.55
+        });
       } else if (enemy.type === "raider") {
-        fireEnemyAimed(muzzle, bulletSpeed + 0.6);
-        fireEnemyAimed(muzzle, bulletSpeed + 0.4, 28);
-        fireEnemyAimed(muzzle, bulletSpeed + 0.4, -28);
+        const count = Math.min(11, 3 + Math.floor(bulletTier / 2) * 2);
+        fireEnemyAimedBurst(muzzle, count, bulletSpeed + 0.5, 24, {
+          radius: 6,
+          damage: 38 + stageNumber * 0.62
+        });
       } else if (enemy.type === "frigate") {
-        fireBossFan(muzzle, 5, bulletSpeed + 0.2, 1.1, {
+        fireBossFan(muzzle, Math.min(15, 5 + bulletTier), bulletSpeed + 0.2, Math.min(2.2, 1.1 + bulletTier * 0.1), {
           radius: 7,
           damage: 44 + state.stageNumber,
           color: "rgba(255, 174, 98, 0.92)"
         });
       } else if (enemy.type === "interceptor") {
-        fireEnemyAimed(muzzle, bulletSpeed + 2.4, 0, {
+        const count = Math.min(5, 1 + Math.floor(bulletTier / 2));
+        fireEnemyAimedBurst(muzzle, count, bulletSpeed + 2.4, 20, {
           radius: 5,
           turnRate: 0.018,
           color: "rgba(255, 126, 126, 0.96)"
         });
       } else if (enemy.type === "carrier") {
-        fireBossFan(muzzle, 6, bulletSpeed, 1.4, {
+        fireBossFan(muzzle, Math.min(18, 6 + bulletTier), bulletSpeed, Math.min(2.5, 1.4 + bulletTier * 0.11), {
           radius: 7,
           damage: 44 + state.stageNumber,
           color: "rgba(255, 148, 120, 0.92)"
@@ -1261,6 +1322,10 @@ function updateEnemies() {
   });
 
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
+
+  if (isStageWaveComplete() && !state.boss) {
+    state.pendingBossSpawn = true;
+  }
 }
 
 function updateBossMovement(boss) {
@@ -1365,15 +1430,107 @@ function updateBossMovement(boss) {
 
   boss.targetX = clamp(boss.targetX, leftLimit, rightLimit);
   boss.targetY = clamp(boss.targetY, 110, canvas.height - 110);
-  boss.x = lerp(boss.x, boss.targetX, boss.movementIndex === 6 && boss.dashMode === "crush" ? 0.16 : 0.08);
-  boss.y = lerp(boss.y, boss.targetY, 0.08);
+  const movementSpeed = Math.min(0.16, 0.08 + boss.stage * 0.0008);
+  boss.x = lerp(boss.x, boss.targetX, boss.movementIndex === 6 && boss.dashMode === "crush" ? 0.2 : movementSpeed);
+  boss.y = lerp(boss.y, boss.targetY, movementSpeed);
+}
+
+function updateBossEscalationBarrage(boss) {
+  if (boss.barrageCooldown > 0) {
+    return;
+  }
+
+  const tier = Math.floor((boss.stage - 1) / 8);
+  const count = Math.min(18, 4 + tier);
+  const speed = 4.8 + boss.stage * 0.035;
+  const spread = Math.min(2.45, 0.9 + tier * 0.12);
+  const origin = { x: boss.x - boss.width * 0.44, y: boss.y };
+
+  fireBossFan(origin, count, speed, spread, {
+    radius: 5 + Math.min(3, Math.floor(boss.stage / 35)),
+    damage: 38 + boss.stage * 0.9,
+    color: `hsla(${(boss.hue + 28) % 360} 96% 68% / 0.94)`,
+    kind: "bossBarrage",
+    trailHue: boss.hue
+  });
+
+  if (boss.stage >= 55 && boss.barrageVolley % 3 === 2) {
+    fireBossRing(origin, Math.min(24, 8 + Math.floor(boss.stage / 5)), 3.8 + boss.stage * 0.025, {
+      radius: 5,
+      damage: 34 + boss.stage * 0.75,
+      color: `hsla(${(boss.hue + 90) % 360} 96% 70% / 0.9)`,
+      kind: "bossBarrage",
+      trailHue: (boss.hue + 90) % 360
+    });
+  }
+
+  boss.barrageVolley += 1;
+  boss.barrageCooldown = Math.max(48, 145 - boss.stage * 0.62);
+}
+
+function updateBossLaserMatrix(boss) {
+  if (boss.stage < 20 || boss.laserCooldown > 0) {
+    return;
+  }
+
+  const tier = Math.floor((boss.stage - 20) / 10);
+  const enraged = boss.hp / boss.maxHp < 0.5 ? 1 : 0;
+  const count = Math.min(10, 2 + tier + enraged);
+  const speed = 6.4 + boss.stage * 0.032;
+  const spread = Math.min(1.9, 0.58 + tier * 0.14);
+  const bounceCount = Math.min(6, 1 + Math.floor((boss.stage - 20) / 15));
+  const pattern = boss.laserVolley % 3;
+  const originX = boss.x - boss.width * 0.43;
+
+  for (let index = 0; index < count; index += 1) {
+    const ratio = count === 1 ? 0.5 : index / (count - 1);
+    const offset = ratio - 0.5;
+    const originY = boss.y + offset * Math.min(180, boss.height * 0.72);
+    const aimedAngle = Math.atan2(state.player.y - originY, state.player.x - originX);
+    let angle;
+
+    if (pattern === 0) {
+      angle = aimedAngle + offset * spread;
+    } else if (pattern === 1) {
+      angle = Math.PI + offset * (1.25 + tier * 0.09);
+    } else {
+      const direction = index % 2 === 0 ? -1 : 1;
+      angle = Math.PI + direction * (0.3 + Math.abs(offset) * (0.8 + tier * 0.05));
+    }
+
+    spawnEnemyProjectile({
+      x: originX,
+      y: originY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 8,
+      length: Math.min(150, 72 + boss.stage * 0.65),
+      thickness: Math.min(18, 8 + Math.floor(boss.stage / 12)),
+      damage: 50 + boss.stage * 0.65,
+      color: `hsla(${(boss.hue + index * 17) % 360} 100% 70% / 0.96)`,
+      kind: "laser",
+      life: 360,
+      bounceY: true,
+      bouncesRemaining: bounceCount,
+      trailHue: (boss.hue + index * 17) % 360
+    });
+  }
+
+  playSfx("beam", { volume: 0.34, rate: 1 + tier * 0.025 });
+  boss.laserVolley += 1;
+  const baseCooldown = Math.max(42, 126 - boss.stage * 0.7);
+  boss.laserCooldown = enraged ? baseCooldown * 0.78 : baseCooldown;
 }
 
 function updateBossAttackStyle(boss) {
   const stageScale = boss.stage;
-  boss.fireCooldown -= 1;
-  boss.patternCooldown -= 1;
-  boss.specialCooldown -= 1;
+  const hpPressure = 1 - boss.hp / boss.maxHp;
+  const attackTempo = 1 + boss.stage * 0.006 + hpPressure * 0.7;
+  boss.fireCooldown -= attackTempo;
+  boss.patternCooldown -= attackTempo;
+  boss.specialCooldown -= attackTempo;
+  boss.barrageCooldown -= attackTempo;
+  boss.laserCooldown -= attackTempo;
 
   if (boss.attackIndex === 0) {
     if (boss.fireCooldown <= 0) {
@@ -1613,6 +1770,9 @@ function updateBossAttackStyle(boss) {
       boss.patternCooldown = Math.max(82, 132 - Math.floor(stageScale * 0.14));
     }
   }
+
+  updateBossEscalationBarrage(boss);
+  updateBossLaserMatrix(boss);
 }
 
 function updateBoss() {
@@ -1644,6 +1804,17 @@ function updateBoss() {
   }
 }
 
+function enemyLaserHitsPlayer(bullet) {
+  const angle = Math.atan2(bullet.vy, bullet.vx);
+  const dx = state.player.x - bullet.x;
+  const dy = state.player.y - bullet.y;
+  const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
+  const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
+  const halfLength = (bullet.length || 72) / 2;
+  const halfThickness = (bullet.thickness || 10) / 2;
+  return Math.abs(localX) <= halfLength + 22 && Math.abs(localY) <= halfThickness + 20;
+}
+
 function updateEnemyBullets() {
   state.enemyBullets = state.enemyBullets.filter((bullet) => {
     bullet.age += 1;
@@ -1669,8 +1840,23 @@ function updateEnemyBullets() {
     bullet.x += bullet.vx;
     bullet.y += bullet.vy;
 
+    if (bullet.bounceY && bullet.bouncesRemaining > 0) {
+      const wallPadding = Math.max(10, (bullet.thickness || bullet.radius) / 2);
+      const hitTopWall = bullet.y <= wallPadding && bullet.vy < 0;
+      const hitBottomWall = bullet.y >= canvas.height - wallPadding && bullet.vy > 0;
+      if (hitTopWall || hitBottomWall) {
+        bullet.y = hitTopWall ? wallPadding : canvas.height - wallPadding;
+        bullet.vy *= -1;
+        bullet.bouncesRemaining -= 1;
+        addEffect(bullet.x, bullet.y, bullet.color, 12, 4);
+      }
+    }
+
     const radius = bullet.radius + Math.sin(bullet.age * 0.12 + bullet.phase) * (bullet.pulse ?? 0);
-    if (Math.hypot(bullet.x - state.player.x, bullet.y - state.player.y) < Math.max(8, radius) + 22) {
+    const hitPlayerShip = bullet.kind === "laser"
+      ? enemyLaserHitsPlayer(bullet)
+      : Math.hypot(bullet.x - state.player.x, bullet.y - state.player.y) < Math.max(8, radius) + 22;
+    if (hitPlayerShip) {
       hitPlayer(bullet.damage);
       return false;
     }
@@ -2046,11 +2232,19 @@ function drawBullets() {
     const radius = bullet.radius + Math.sin(bullet.age * 0.12 + bullet.phase) * (bullet.pulse ?? 0);
     ctx.save();
     ctx.fillStyle = bullet.color;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = bullet.kind === "laser" ? 24 : 14;
     ctx.shadowColor = bullet.trailHue === null ? bullet.color : `hsla(${bullet.trailHue} 90% 65% / 0.65)`;
-    ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, Math.max(4, radius), 0, Math.PI * 2);
-    ctx.fill();
+    if (bullet.kind === "laser") {
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
+      ctx.fillRect(-bullet.length / 2, -bullet.thickness / 2, bullet.length, bullet.thickness);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
+      ctx.fillRect(-bullet.length / 2, -Math.max(2, bullet.thickness * 0.18), bullet.length, Math.max(4, bullet.thickness * 0.36));
+    } else {
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, Math.max(4, radius), 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   });
 }
