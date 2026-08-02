@@ -146,7 +146,9 @@ const state = {
   previewThreatLabel: "Threat Scan",
   finalVictory: false,
   scoreSubmissionReady: false,
-  submittedRunScore: 0
+  submittedRunScore: 0,
+  scoreSubmissionPending: false,
+  autoSubmissionAttempted: false
 };
 
 const audioState = {
@@ -345,9 +347,37 @@ async function loadLeaderboard() {
 function resetScoreSubmission() {
   state.scoreSubmissionReady = false;
   state.submittedRunScore = 0;
+  state.scoreSubmissionPending = false;
+  state.autoSubmissionAttempted = false;
   ui.submitScoreValue.textContent = "0";
   ui.submitScoreButton.disabled = true;
-  ui.playerPinInput.value = "";
+}
+
+function getScoreCredentials() {
+  return {
+    name: ui.playerNameInput.value.trim(),
+    pin: ui.playerPinInput.value.trim()
+  };
+}
+
+function hasValidScoreCredentials() {
+  const { name, pin } = getScoreCredentials();
+  return name.length >= 1 && name.length <= 20 && /^\d{4}$/.test(pin);
+}
+
+function maybeAutoSubmitScore() {
+  if (
+    !state.scoreSubmissionReady ||
+    state.scoreSubmissionPending ||
+    state.autoSubmissionAttempted ||
+    !isRankingConfigured() ||
+    !hasValidScoreCredentials()
+  ) {
+    return;
+  }
+
+  state.autoSubmissionAttempted = true;
+  void submitScore(null, { automatic: true });
 }
 
 function prepareScoreSubmission() {
@@ -361,11 +391,17 @@ function prepareScoreSubmission() {
     return;
   }
 
-  setRankingStatus(
-    state.scoreSubmissionReady
-      ? "名前と登録時の4桁PINを入力してください。"
-      : "登録できるスコアがありません。"
-  );
+  if (!state.scoreSubmissionReady) {
+    setRankingStatus("登録できるスコアがありません。");
+    return;
+  }
+
+  if (hasValidScoreCredentials()) {
+    setRankingStatus("最高得点を確認して自動登録します...");
+    maybeAutoSubmitScore();
+  } else {
+    setRankingStatus("自動登録するには名前と4桁PINを入力してください。");
+  }
 }
 
 function getSubmitErrorMessage(errorCode) {
@@ -384,16 +420,19 @@ function getSubmitErrorMessage(errorCode) {
   return "スコア登録に失敗しました。接続設定を確認してください。";
 }
 
-async function submitScore(event) {
-  event.preventDefault();
+async function submitScore(event, options = {}) {
+  event?.preventDefault();
+
+  if (state.scoreSubmissionPending) {
+    return;
+  }
 
   if (!state.scoreSubmissionReady || !isRankingConfigured()) {
     setRankingStatus("ゲーム終了後にスコアを登録できます。", "error");
     return;
   }
 
-  const name = ui.playerNameInput.value.trim();
-  const pin = ui.playerPinInput.value.trim();
+  const { name, pin } = getScoreCredentials();
 
   if (!name || name.length > 20) {
     setRankingStatus("名前は1文字以上20文字以内で入力してください。", "error");
@@ -404,8 +443,9 @@ async function submitScore(event) {
     return;
   }
 
+  state.scoreSubmissionPending = true;
   ui.submitScoreButton.disabled = true;
-  setRankingStatus("スコアを登録中...");
+  setRankingStatus(options.automatic ? "最高得点を自動登録中..." : "スコアを登録中...");
 
   try {
     const response = await fetch(`${rankingConfig.url}/rest/v1/rpc/submit_high_score`, {
@@ -429,27 +469,40 @@ async function submitScore(event) {
       // Local storage is optional; the PIN is never stored in the browser.
     }
 
-    ui.playerPinInput.value = "";
-
     let completionMessage;
     let completionType = "";
 
     if (result.status === "not_improved") {
       completionMessage = `現在の最高得点 ${Number(result.score).toLocaleString("ja-JP")} を超えていないため更新しませんでした。`;
     } else {
-      state.scoreSubmissionReady = false;
       completionMessage = result.status === "created"
         ? "名前と最高得点を登録しました。"
-        : "最高得点を更新しました。";
+        : options.automatic
+          ? "最高得点を自動更新しました。"
+          : "最高得点を更新しました。";
       completionType = "success";
     }
+
+    state.scoreSubmissionReady = false;
 
     await loadLeaderboard();
     setRankingStatus(completionMessage, completionType);
   } catch (error) {
     setRankingStatus(getSubmitErrorMessage(String(error?.message ?? error)), "error");
   } finally {
+    state.scoreSubmissionPending = false;
     ui.submitScoreButton.disabled = !state.scoreSubmissionReady || !isRankingConfigured();
+  }
+}
+
+function handleScoreCredentialsInput() {
+  if (state.scoreSubmissionPending) {
+    return;
+  }
+
+  state.autoSubmissionAttempted = false;
+  if (state.scoreSubmissionReady) {
+    maybeAutoSubmitScore();
   }
 }
 
@@ -2474,6 +2527,8 @@ ui.refreshRankingButton.addEventListener("click", () => {
 });
 
 ui.scoreForm.addEventListener("submit", submitScore);
+ui.playerNameInput.addEventListener("input", handleScoreCredentialsInput);
+ui.playerPinInput.addEventListener("input", handleScoreCredentialsInput);
 
 async function boot() {
   await loadAssets();
