@@ -32,7 +32,7 @@ const ui = {
 const ASSET_PATHS = {
   player: "assets/player-ship.png",
   enemy: "assets/enemy-drone.png",
-  boss: "assets/boss-dreadnought.png"
+  boss: "assets/boss-dreadnought.png?v=20260802"
 };
 
 const AUDIO_PATHS = {
